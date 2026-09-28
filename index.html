@@ -227,10 +227,18 @@ function drilldownFromTransitions(list, label) {
     list.map(r => [tdiLink(r), r.summary, fmtDate(r.exit_time), r.duration_days!=null?fmt(r.duration_days):'–', fmt(r.alloc_days)]));
 }
 function epicLink(e) { return `<a href="${e.url}" target="_blank">${e.key}</a>`; }
-function drilldownFromEpics(list, label) {
-  openDrilldown(`Discovery epics — ${label}`, `${list.length} epic(s)`,
-    ['Epic', 'Summary', 'Allocation (days)', 'Parent TDI'],
-    list.map(e => [epicLink(e), e.summary, fmt(e.alloc_days), tdiLink({key: e.tdi_key, url: `https://talkdesk.atlassian.net/browse/${e.tdi_key}`}) + ' ' + (e.tdi_summary || '')]));
+// One row per TDI — all of that TDI's discovery epics (Comms zone or otherwise,
+// DES already excluded upstream) are grouped onto that single row rather than
+// split across multiple rows.
+function drilldownFromTdiEpicGroups(list, label) {
+  openDrilldown(`Discoveries — ${label}`, `${list.length} TDI(s)`,
+    ['TDI', 'Summary', 'Discovery epics', 'Total allocation (days)'],
+    list.map(t => [
+      tdiLink(t),
+      t.summary,
+      (t.discovery_epics || []).map(epicLink).join(', ') || '–',
+      fmt(t.alloc_days),
+    ]));
 }
 
 // ---------- rendering ----------
@@ -255,11 +263,11 @@ function recomputeAndRender() {
   currentCycle = cycleAgg.find(c => c.in_progress) || cycleAgg[cycleAgg.length - 1];
 
   // KPIs — top 3 tiles bucket the CURRENT (in-progress) 3S cycle's completed
-  // discovery epics by their "Allocation in Days" value.
-  const currentEpics = currentCycle._issues.flatMap(t => (t.discovery_epics || []).map(e => ({...e, tdi_key: t.key, tdi_summary: t.summary})));
-  const bucketLow = currentEpics.filter(e => e.alloc_days > 0 && e.alloc_days <= 5);
-  const bucketMid = currentEpics.filter(e => e.alloc_days > 5 && e.alloc_days <= 10);
-  const bucketHigh = currentEpics.filter(e => e.alloc_days > 10);
+  // TDIs by their TOTAL discovery allocation (all of a TDI's discovery epics
+  // summed and grouped onto one entry, not counted per-epic).
+  const bucketLow = currentCycle._issues.filter(t => t.alloc_days > 0 && t.alloc_days <= 5);
+  const bucketMid = currentCycle._issues.filter(t => t.alloc_days > 5 && t.alloc_days <= 10);
+  const bucketHigh = currentCycle._issues.filter(t => t.alloc_days > 10);
   currentCycle._epicBuckets = { low: bucketLow, mid: bucketMid, high: bucketHigh };
 
   const subText = `3S ${currentCycle.label} (${fmtDate(currentCycle.start)} – ${fmtDate(currentCycle.end)})`;
@@ -356,9 +364,9 @@ function buildChart(containerId, values, opts) {
 }
 
 // ---------- KPI tile click -> drill-down ----------
-document.getElementById('tile-bucket-low').addEventListener('click', () => drilldownFromEpics(currentCycle._epicBuckets.low, `1–5 days, 3S ${currentCycle.label} (current)`));
-document.getElementById('tile-bucket-mid').addEventListener('click', () => drilldownFromEpics(currentCycle._epicBuckets.mid, `6–10 days, 3S ${currentCycle.label} (current)`));
-document.getElementById('tile-bucket-high').addEventListener('click', () => drilldownFromEpics(currentCycle._epicBuckets.high, `>10 days, 3S ${currentCycle.label} (current)`));
+document.getElementById('tile-bucket-low').addEventListener('click', () => drilldownFromTdiEpicGroups(currentCycle._epicBuckets.low, `1–5 days, 3S ${currentCycle.label} (current)`));
+document.getElementById('tile-bucket-mid').addEventListener('click', () => drilldownFromTdiEpicGroups(currentCycle._epicBuckets.mid, `6–10 days, 3S ${currentCycle.label} (current)`));
+document.getElementById('tile-bucket-high').addEventListener('click', () => drilldownFromTdiEpicGroups(currentCycle._epicBuckets.high, `>10 days, 3S ${currentCycle.label} (current)`));
 
 // ---------- refresh from Jira ----------
 const isGithubPages = location.hostname.endsWith('github.io');
