@@ -52,7 +52,7 @@
   #refresh-btn:disabled { opacity: 0.6; cursor: default; }
   #refresh-status { font-size: 11px; color: var(--text-muted); margin-top: 6px; text-align: right; max-width: 220px; }
 
-  .kpi-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .kpi-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
   .stat-tile {
     background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
     padding: 14px 16px; cursor: pointer; transition: box-shadow 0.15s; min-width: 0;
@@ -142,6 +142,12 @@
       <div class="sub" id="kpi-bucket-high-sub"></div>
       <div class="click-hint">Click to see the list →</div>
     </div>
+    <div class="stat-tile" id="tile-ongoing">
+      <div class="label">Discovery Epics In Progress</div>
+      <div class="value" id="kpi-ongoing">–</div>
+      <div class="sub" id="kpi-ongoing-sub"></div>
+      <div class="click-hint">Click to see the list →</div>
+    </div>
   </div>
 
   <div class="card">
@@ -181,7 +187,7 @@
   </div>
 
   <div class="note" style="margin-top: -4px;">
-    Methodology: TDIs = Jira project <strong>TDI</strong>, issue type Feature, Zone = Communications Services, <strong>with an assignee and a target quarter (Fix Version) both set</strong> — this matches the GitHub release dashboard's count exactly (52 vs. this dashboard's earlier unfiltered 67) and is applied consistently across every metric here. Discovery allocation = sum of "Allocation in Days" on child Epics (any project) whose title contains "discovery" and whose parent is the TDI, <strong>excluding epics from the Design team's project (DES)</strong>. The three tiles above bucket the current 3S cycle's completed discovery epics by their allocation-in-days value (1–5 / 6–10 / &gt;10); epics with no allocation set aren't counted in any bucket. "Refresh from Jira" requires running the local server (<code>python3 server.py</code>) in this folder — opened as a plain file, the button will tell you so instead of silently failing.
+    Methodology: TDIs = Jira project <strong>TDI</strong>, issue type Feature, Zone = Communications Services, <strong>with an assignee and a target quarter (Fix Version) both set</strong> — this matches the GitHub release dashboard's count exactly (52 vs. this dashboard's earlier unfiltered 67) and is applied consistently across every metric here. Discovery allocation = sum of "Allocation in Days" on child Epics (any project) whose title contains "discovery" and whose parent is the TDI, <strong>excluding epics from the Design team's project (DES)</strong>. The first three tiles bucket the current 3S cycle's <strong>completed</strong> TDIs by their total discovery allocation (1–5 / 6–10 / &gt;10 days) — all of a TDI's discovery epics are grouped into one entry and summed, so a TDI counts once even with multiple epics; TDIs with no allocation set aren't counted in any bucket. The fourth tile, <strong>Discovery Epics In Progress</strong>, is independent of that: it counts TDIs whose discovery epic(s) have a Jira Sprint overlapping the current 3S window and aren't Done/Closed yet, regardless of whether the TDI has already moved to Ready to Plan — so a TDI can appear in both a completed bucket and this tile if it has more than one discovery epic. "Refresh from Jira" requires running the local server (<code>python3 server.py</code>) in this folder — opened as a plain file, the button will tell you so instead of silently failing.
   </div>
 
 </div>
@@ -278,6 +284,14 @@ function recomputeAndRender() {
   document.getElementById('kpi-bucket-high').textContent = bucketHigh.length;
   document.getElementById('kpi-bucket-high-sub').textContent = subText;
 
+  // "Discovery Epics In Progress" — TDIs (grouped, same as above) whose
+  // discovery epic(s) have a Sprint overlapping the current 3S window and
+  // aren't Done/Closed yet. Independent of whether the TDI itself has
+  // already moved to Ready to Plan.
+  const ongoing = RAW.ongoing_discovery.tdis;
+  document.getElementById('kpi-ongoing').textContent = ongoing.length;
+  document.getElementById('kpi-ongoing-sub').textContent = subText;
+
   renderTable();
   buildChart('chart-count', cycleAgg.map(c => c.count), {
     step: 5, color: 'var(--series-1)', line: true, lineColor: 'var(--series-1)',
@@ -367,6 +381,7 @@ function buildChart(containerId, values, opts) {
 document.getElementById('tile-bucket-low').addEventListener('click', () => drilldownFromTdiEpicGroups(currentCycle._epicBuckets.low, `1–5 days, 3S ${currentCycle.label} (current)`));
 document.getElementById('tile-bucket-mid').addEventListener('click', () => drilldownFromTdiEpicGroups(currentCycle._epicBuckets.mid, `6–10 days, 3S ${currentCycle.label} (current)`));
 document.getElementById('tile-bucket-high').addEventListener('click', () => drilldownFromTdiEpicGroups(currentCycle._epicBuckets.high, `>10 days, 3S ${currentCycle.label} (current)`));
+document.getElementById('tile-ongoing').addEventListener('click', () => drilldownFromTdiEpicGroups(RAW.ongoing_discovery.tdis, `in progress, 3S ${currentCycle.label} (current)`));
 
 // ---------- refresh from Jira ----------
 const isGithubPages = location.hostname.endsWith('github.io');

@@ -215,38 +215,68 @@ def run(zone=ZONE, window_cycles=WINDOW_CYCLES, progress=None):
                     "duration_days": duration,
                 })
 
-    log("Fetching linked DISCOVERY epics and allocation...")
-    tdi_keys = [t["key"] for t in transitions]
+    now = datetime.now(timezone.utc)
+    current_n = cycle_index_for(now)
+    current_start, current_end, current_label = cycle_bounds(current_n)
+
+    log("Fetching DISCOVERY epics (completed + ongoing) and allocation...")
+    # Search broadly (not just epics of already-transitioned TDIs) so we also
+    # catch epics still in progress under TDIs that haven't moved to Ready to
+    # Plan yet - needed to compute "ongoing" discovery work below. Exclude the
+    # Design team's project (DES) - their discovery epics don't count toward
+    # this zone's discovery epic count or allocation totals.
+    epic_jql = 'issuetype = Epic and summary ~ "discovery" and project != DES'
+    epic_issues = _search_all(epic_jql, "summary,status,customfield_15467,customfield_10007,parent")
+
+    zone_tdi_keys = set(issue_meta.keys())
+
+    def _sprint_overlaps_current(sprints):
+        for s in sprints or []:
+            sd, ed = s.get("startDate"), s.get("endDate")
+            if not sd or not ed:
+                continue
+            s_start = datetime.fromisoformat(sd.replace("Z", "+00:00"))
+            s_end = datetime.fromisoformat(ed.replace("Z", "+00:00"))
+            if s_start < current_end and s_end > current_start:
+                return True
+        return False
+
     alloc_by_tdi = {}
     epics_by_tdi = {}
-    if tdi_keys:
-        keys_str = ",".join(tdi_keys)
-        # Exclude the Design team's project (DES) — their discovery epics don't
-        # count toward this zone's discovery epic count or allocation totals.
-        epic_jql = (
-            f'parent in ({keys_str}) and issuetype = Epic and summary ~ "discovery" '
-            f'and project != DES'
-        )
-        epic_issues = _search_all(epic_jql, "summary,status,customfield_15467,parent")
-        for i in epic_issues:
-            if i["key"].startswith("DES-"):
-                continue  # belt-and-suspenders in case the JQL exclusion doesn't match
-            f = i["fields"]
-            parent_key = (f.get("parent") or {}).get("key")
-            alloc = float(f["customfield_15467"]) if f.get("customfield_15467") else 0.0
-            alloc_by_tdi[parent_key] = alloc_by_tdi.get(parent_key, 0.0) + alloc
-            epics_by_tdi.setdefault(parent_key, []).append({
-                "key": i["key"], "summary": f["summary"], "status": f["status"]["name"],
-                "alloc_days": alloc, "url": f"{JIRA_BASE}/browse/{i['key']}",
-            })
+    ongoing_by_tdi = {}
+    for i in epic_issues:
+        if i["key"].startswith("DES-"):
+            continue  # belt-and-suspenders in case the JQL exclusion doesn't match
+        f = i["fields"]
+        parent_key = (f.get("parent") or {}).get("key")
+        if parent_key not in zone_tdi_keys:
+            continue  # not a Communications Services TDI in our (assignee+fixVersion-filtered) universe
+        alloc = float(f["customfield_15467"]) if f.get("customfield_15467") else 0.0
+        status_name = f["status"]["name"]
+        epic_record = {
+            "key": i["key"], "summary": f["summary"], "status": status_name,
+            "alloc_days": alloc, "url": f"{JIRA_BASE}/browse/{i['key']}",
+        }
+        alloc_by_tdi[parent_key] = alloc_by_tdi.get(parent_key, 0.0) + alloc
+        epics_by_tdi.setdefault(parent_key, []).append(epic_record)
+
+        if status_name not in ("Done", "Closed") and _sprint_overlaps_current(f.get("customfield_10007")):
+            ongoing_by_tdi.setdefault(parent_key, []).append(epic_record)
 
     for t in transitions:
         t["alloc_days"] = round(alloc_by_tdi.get(t["key"], 0.0), 2)
         t["discovery_epics"] = epics_by_tdi.get(t["key"], [])
 
+    ongoing_discovery = []
+    for tdi_key, epics in ongoing_by_tdi.items():
+        ongoing_discovery.append({
+            "key": tdi_key,
+            **issue_meta[tdi_key],
+            "alloc_days": round(sum(e["alloc_days"] for e in epics), 2),
+            "discovery_epics": epics,
+        })
+
     log("Bucketing into 3S cycles...")
-    now = datetime.now(timezone.utc)
-    current_n = cycle_index_for(now)
     window_ns = list(range(current_n - window_cycles + 1, current_n + 1))
     cycles = []
     for n in window_ns:
@@ -278,6 +308,12 @@ def run(zone=ZONE, window_cycles=WINDOW_CYCLES, progress=None):
         "current_in_discovery": current_in_discovery,
         "transitions": transitions,
         "cycles": cycles,
+        "ongoing_discovery": {
+            "cycle_label": current_label,
+            "cycle_start": current_start.isoformat(),
+            "cycle_end": current_end.isoformat(),
+            "tdis": ongoing_discovery,
+        },
         "all_time": {
             "total_transitions": len(transitions),
             "total_allocation_days": round(sum(alloc_by_tdi.values()), 2),
