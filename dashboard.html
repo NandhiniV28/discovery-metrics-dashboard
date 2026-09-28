@@ -187,7 +187,7 @@
   </div>
 
   <div class="note" style="margin-top: -4px;">
-    Methodology: TDIs = Jira project <strong>TDI</strong>, issue type Feature, Zone = Communications Services, <strong>with an assignee and a target quarter (Fix Version) both set</strong> — this matches the GitHub release dashboard's count exactly (52 vs. this dashboard's earlier unfiltered 67) and is applied consistently across every metric here. Discovery allocation = sum of "Allocation in Days" on child Epics (any project) whose title contains "discovery" and whose parent is the TDI, <strong>excluding epics from the Design team's project (DES)</strong>. The first three tiles bucket the current 3S cycle's <strong>completed</strong> TDIs by their total discovery allocation (1–5 / 6–10 / &gt;10 days) — all of a TDI's discovery epics are grouped into one entry and summed, so a TDI counts once even with multiple epics; TDIs with no allocation set aren't counted in any bucket. The fourth tile, <strong>Discovery Epics In Progress</strong>, is independent of that: it counts TDIs whose discovery epic(s) have a Jira Sprint overlapping the current 3S window and aren't Done/Closed yet, regardless of whether the TDI has already moved to Ready to Plan — so a TDI can appear in both a completed bucket and this tile if it has more than one discovery epic. "Refresh from Jira" requires running the local server (<code>python3 server.py</code>) in this folder — opened as a plain file, the button will tell you so instead of silently failing.
+    Methodology: TDIs = Jira project <strong>TDI</strong>, issue type Feature, Zone = Communications Services, <strong>with an assignee and a target quarter (Fix Version) both set</strong> — this matches the GitHub release dashboard's count exactly (52 vs. this dashboard's earlier unfiltered 67) and is applied consistently across every metric here. Discovery allocation = sum of "Allocation in Days" on child Epics (any project) whose title contains "discovery" and whose parent is the TDI, <strong>excluding epics from the Design team's project (DES)</strong>. A TDI that transitioned "In Discovery → Ready to Plan" without ever having a linked discovery epic is <strong>not</strong> counted in the trend chart, allocation chart, or 3S breakdown table below — only TDIs with at least one discovery epic represent tracked discovery work. The first three tiles bucket the current 3S cycle's <strong>completed</strong> TDIs by their total discovery allocation (1–5 / 6–10 / &gt;10 days) — all of a TDI's discovery epics are grouped into one entry and summed, so a TDI counts once even with multiple epics; TDIs with no allocation set aren't counted in any bucket. The fourth tile, <strong>Discovery Epics In Progress</strong>, is independent of that: it counts TDIs whose discovery epic(s) have a Jira Sprint overlapping the current 3S window and aren't Done/Closed yet, regardless of whether the TDI has already moved to Ready to Plan — so a TDI can appear in both a completed bucket and this tile if it has more than one discovery epic. "Refresh from Jira" requires running the local server (<code>python3 server.py</code>) in this folder — opened as a plain file, the button will tell you so instead of silently failing.
   </div>
 
 </div>
@@ -256,9 +256,12 @@ function recomputeAndRender() {
   allTransitions = RAW.transitions;
   windowTransitions = allTransitions.filter(t => t.in_window);
 
-  // cycle aggregation (drives both the top KPI tiles and the charts/table below)
+  // cycle aggregation (drives both the top KPI tiles and the charts/table below).
+  // Only TDIs with at least one linked discovery epic count as a "discovery" -
+  // a TDI that transitioned without ever having a discovery epic (e.g. informal/
+  // undocumented discovery) isn't counted here.
   cycleAgg = RAW.cycles.map(c => {
-    const inCycle = windowTransitions.filter(t => t.cycle_label === c.label);
+    const inCycle = windowTransitions.filter(t => t.cycle_label === c.label && (t.discovery_epics || []).length > 0);
     const d = inCycle.map(t => t.duration_days).filter(x => x != null);
     return {
       ...c,
