@@ -125,13 +125,13 @@
 
   <div class="kpi-row">
     <div class="stat-tile" id="tile-bucket-low">
-      <div class="label">Discoveries Completed in 1-5 Days</div>
+      <div class="label">Discoveries Taking 1-5 Days</div>
       <div class="value" id="kpi-bucket-low">–</div>
       <div class="sub" id="kpi-bucket-low-sub"></div>
       <div class="click-hint">Click to see the list →</div>
     </div>
     <div class="stat-tile" id="tile-bucket-mid">
-      <div class="label">Discoveries Completed in 6-10 Days</div>
+      <div class="label">Discoveries Taking 6-10 Days</div>
       <div class="value" id="kpi-bucket-mid">–</div>
       <div class="sub" id="kpi-bucket-mid-sub"></div>
       <div class="click-hint">Click to see the list →</div>
@@ -238,11 +238,13 @@ function epicLink(e) { return `<a href="${e.url}" target="_blank">${e.key}</a>`;
 // split across multiple rows.
 function drilldownFromTdiEpicGroups(list, label) {
   openDrilldown(`Discoveries — ${label}`, `${list.length} TDI(s)`,
-    ['TDI', 'Summary', 'Discovery epics', 'Total allocation (days)'],
+    ['TDI', 'TDI Sprint', 'Summary', 'Discovery epics', 'Epic Sprint', 'Total allocation (days)'],
     list.map(t => [
       tdiLink(t),
+      t.sprint || '–',
       t.summary,
       (t.discovery_epics || []).map(epicLink).join(', ') || '–',
+      (t.discovery_epics || []).map(e => e.sprint || '–').join(', ') || '–',
       fmt(t.alloc_days),
     ]));
 }

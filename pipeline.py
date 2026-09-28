@@ -32,8 +32,14 @@ FIELDS_COMMON = (
     "customfield_15092,"  # Talkdesk Product
     "customfield_13360,"  # TDI Category
     "customfield_15470,"  # R&D Product Area
-    "customfield_15467"   # Allocation in Days
+    "customfield_15467,"  # Allocation in Days
+    "customfield_10007"   # Sprint
 )
+
+
+def _format_sprints(sprint_field):
+    names = [s["name"] for s in (sprint_field or []) if s.get("name")]
+    return ", ".join(names) if names else None
 
 
 def _token():
@@ -116,6 +122,7 @@ def _issue_record(i):
         "product": _extract_field(f, "customfield_15092"),
         "tdi_category": _extract_field(f, "customfield_13360"),
         "rd_product_area": _extract_field(f, "customfield_15470"),
+        "sprint": _format_sprints(f.get("customfield_10007")),
         "url": f"{JIRA_BASE}/browse/{i['key']}",
     }
 
@@ -256,6 +263,7 @@ def run(zone=ZONE, window_cycles=WINDOW_CYCLES, progress=None):
         epic_record = {
             "key": i["key"], "summary": f["summary"], "status": status_name,
             "alloc_days": alloc, "url": f"{JIRA_BASE}/browse/{i['key']}",
+            "sprint": _format_sprints(f.get("customfield_10007")),
         }
         alloc_by_tdi[parent_key] = alloc_by_tdi.get(parent_key, 0.0) + alloc
         epics_by_tdi.setdefault(parent_key, []).append(epic_record)
