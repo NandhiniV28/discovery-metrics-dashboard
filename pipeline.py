@@ -21,8 +21,14 @@ JIRA_BASE = "https://talkdesk.atlassian.net"
 DEFAULT_EMAIL = "nandhini.venkatesan@talkdesk.com"
 ZONE = "Communications Services"
 
-# Official 3S calendar anchor: cycle "260102" ends 2026-01-02.
-ANCHOR_END = datetime(2026, 1, 2, tzinfo=timezone.utc)
+# Official 3S calendar anchor: cycle "260102" ends 2026-01-02. Jira changelog
+# timestamps carry a local (-06:00/-07:00) offset, not UTC - anchoring at UTC
+# midnight meant an event late in the evening on the official end date (e.g.
+# 2026-09-11T19:38-06:00) was already past midnight UTC on the 12th and got
+# pushed into the *next* cycle. Anchor at end-of-day in that local offset
+# instead so the whole calendar day of the end date belongs to its cycle.
+CYCLE_TZ = timezone(timedelta(hours=-6))
+ANCHOR_END = datetime(2026, 1, 2, 23, 59, 59, 999999, tzinfo=CYCLE_TZ)
 STEP = timedelta(days=42)
 CYCLE_LEN = timedelta(days=39)
 WINDOW_CYCLES = 6
