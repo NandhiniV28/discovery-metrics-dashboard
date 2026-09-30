@@ -187,7 +187,7 @@
   </div>
 
   <div class="note" style="margin-top: -4px;">
-    Methodology: TDIs = Jira project <strong>TDI</strong>, issue type Feature, Zone = Communications Services, <strong>with an assignee and a target quarter (Fix Version) both set</strong> — this matches the GitHub release dashboard's count exactly (52 vs. this dashboard's earlier unfiltered 67) and is applied consistently across every metric here. Discovery allocation = sum of "Allocation in Days" on child Epics (any project) whose title contains "discovery" and whose parent is the TDI, <strong>excluding epics from the Design team's project (DES)</strong>. A TDI that transitioned "In Discovery → Ready to Plan" without ever having a linked discovery epic is <strong>not</strong> counted in the trend chart, allocation chart, or 3S breakdown table below — only TDIs with at least one discovery epic represent tracked discovery work. The first three tiles bucket the current 3S cycle's <strong>completed</strong> TDIs by their total discovery allocation (1–5 / 6–10 / &gt;10 days) — all of a TDI's discovery epics are grouped into one entry and summed, so a TDI counts once even with multiple epics; TDIs with no allocation set aren't counted in any bucket. The fourth tile, <strong>Discovery Epics In Progress</strong>, is independent of that: it counts TDIs whose discovery epic(s) have a Jira Sprint overlapping the current 3S window and aren't Done/Closed yet, regardless of whether the TDI has already moved to Ready to Plan — so a TDI can appear in both a completed bucket and this tile if it has more than one discovery epic. "Refresh from Jira" requires running the local server (<code>python3 server.py</code>) in this folder — opened as a plain file, the button will tell you so instead of silently failing.
+    Methodology: TDIs = Jira project <strong>TDI</strong>, issue type Feature, Zone = Communications Services, <strong>with an assignee and a target quarter (Fix Version) both set</strong> — this matches the GitHub release dashboard's count exactly (52 vs. this dashboard's earlier unfiltered 67) and is applied consistently across every metric here. Discovery allocation = sum of "Allocation in Days" on child Epics (any project) whose title contains "discovery" and whose parent is the TDI, <strong>excluding epics from the Design team's project (DES)</strong>. A TDI that transitioned "In Discovery → Ready to Plan" without ever having a linked discovery epic is <strong>not</strong> counted in the trend chart, allocation chart, or 3S breakdown table below — only TDIs with at least one discovery epic represent tracked discovery work. The first three tiles bucket the current 3S cycle's discovery work by total allocation (1–5 / 6–10 / &gt;10 days) — <strong>both TDIs that already completed discovery this cycle and ones still ongoing/not yet started</strong> (for visibility into estimates vs. actual pace, not just finished work); all of a TDI's discovery epics are grouped into one entry and summed, so a TDI counts once even with multiple epics, and TDIs with no allocation set aren't counted in any bucket. The fourth tile, <strong>Discovery Epics In Progress</strong>, is the same "still open" set on its own: TDIs whose discovery epic(s) have a Jira Sprint overlapping the current 3S window and aren't Done/Closed yet, regardless of whether the TDI has already moved to Ready to Plan. "Refresh from Jira" requires running the local server (<code>python3 server.py</code>) in this folder — opened as a plain file, the button will tell you so instead of silently failing.
   </div>
 
 </div>
@@ -273,15 +273,22 @@ function recomputeAndRender() {
   });
   currentCycle = cycleAgg.find(c => c.in_progress) || cycleAgg[cycleAgg.length - 1];
 
-  // KPIs — top 3 tiles bucket the CURRENT (in-progress) 3S cycle's completed
-  // TDIs by their TOTAL discovery allocation (all of a TDI's discovery epics
-  // summed and grouped onto one entry, not counted per-epic).
-  const bucketLow = currentCycle._issues.filter(t => t.alloc_days > 0 && t.alloc_days <= 5);
-  const bucketMid = currentCycle._issues.filter(t => t.alloc_days > 5 && t.alloc_days <= 10);
-  const bucketHigh = currentCycle._issues.filter(t => t.alloc_days > 10);
+  // KPIs — top 3 tiles bucket the CURRENT (in-progress) 3S cycle's discovery
+  // work by TOTAL allocation (all of a TDI's discovery epics summed and
+  // grouped onto one entry, not counted per-epic). This includes both TDIs
+  // that already completed discovery this cycle AND ones still ongoing/not
+  // yet started - for retrospection on estimates vs. actual pace, not just
+  // finished work. A TDI counts once even if it shows up in both sets.
+  const ongoing = RAW.ongoing_discovery.tdis;
+  const completedKeys = new Set(currentCycle._issues.map(t => t.key));
+  const allDiscoveryThisCycle = [...currentCycle._issues, ...ongoing.filter(t => !completedKeys.has(t.key))];
+
+  const bucketLow = allDiscoveryThisCycle.filter(t => t.alloc_days > 0 && t.alloc_days <= 5);
+  const bucketMid = allDiscoveryThisCycle.filter(t => t.alloc_days > 5 && t.alloc_days <= 10);
+  const bucketHigh = allDiscoveryThisCycle.filter(t => t.alloc_days > 10);
   currentCycle._epicBuckets = { low: bucketLow, mid: bucketMid, high: bucketHigh };
 
-  const subText = `3S ${currentCycle.label} (${fmtDate(currentCycle.start)} – ${fmtDate(currentCycle.end)})`;
+  const subText = `3S ${currentCycle.label} (${fmtDate(currentCycle.start)} – ${fmtDate(currentCycle.end)}) · completed + ongoing`;
   document.getElementById('kpi-bucket-low').textContent = bucketLow.length;
   document.getElementById('kpi-bucket-low-sub').textContent = subText;
   document.getElementById('kpi-bucket-mid').textContent = bucketMid.length;
@@ -292,10 +299,10 @@ function recomputeAndRender() {
   // "Discovery Epics In Progress" — TDIs (grouped, same as above) whose
   // discovery epic(s) have a Sprint overlapping the current 3S window and
   // aren't Done/Closed yet. Independent of whether the TDI itself has
-  // already moved to Ready to Plan.
-  const ongoing = RAW.ongoing_discovery.tdis;
+  // already moved to Ready to Plan. Kept as its own tile in addition to
+  // being folded into the buckets above, as a focused "still open" view.
   document.getElementById('kpi-ongoing').textContent = ongoing.length;
-  document.getElementById('kpi-ongoing-sub').textContent = subText;
+  document.getElementById('kpi-ongoing-sub').textContent = `3S ${currentCycle.label} (${fmtDate(currentCycle.start)} – ${fmtDate(currentCycle.end)})`;
 
   renderTable();
   buildChart('chart-count', cycleAgg.map(c => c.count), {
