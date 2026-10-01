@@ -214,7 +214,7 @@ def run(zone=ZONE, window_cycles=WINDOW_CYCLES, progress=None):
     for key, events in issue_status_events.items():
         events_sorted = sorted(events, key=lambda e: _parse_dt(e[0]))
         last_entry = None
-        for created, frm, to in events_sorted:
+        for idx, (created, frm, to) in enumerate(events_sorted):
             dt = _parse_dt(created)
             if to == "In Discovery":
                 last_entry = dt
@@ -223,6 +223,16 @@ def run(zone=ZONE, window_cycles=WINDOW_CYCLES, progress=None):
             # directly). The latter has no discovery entry, so duration_days
             # stays None for it - there's nothing to measure.
             if to == "Ready to Plan" and frm in ("In Discovery", "Backlog"):
+                # Skip a "completion" that gets reversed right back to
+                # Backlog/In Discovery as its very next status change - that's
+                # a correction/bounce, not a genuine completion (e.g. someone
+                # moved it forward, realized it wasn't ready, and reverted it
+                # within hours). Without this, the same TDI shows up multiple
+                # times with inconsistent dates/durations for what is really
+                # one still-unresolved discovery.
+                next_to = events_sorted[idx + 1][2] if idx + 1 < len(events_sorted) else None
+                if next_to in ("In Discovery", "Backlog"):
+                    continue
                 duration = (dt - last_entry).total_seconds() / 86400 if last_entry else None
                 transitions.append({
                     "id": f"{key}|{dt.isoformat()}",
