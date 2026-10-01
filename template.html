@@ -94,6 +94,15 @@
 
   .note { font-size: 12px; color: var(--text-muted); margin-top: 10px; line-height: 1.5; }
 
+  .pagination { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 12px; }
+  .pagination button {
+    background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary);
+    font-size: 12px; padding: 5px 12px; cursor: pointer;
+  }
+  .pagination button:hover:not(:disabled) { background: var(--accent-wash); }
+  .pagination button:disabled { opacity: 0.4; cursor: default; }
+  .pagination span { font-size: 12px; color: var(--text-secondary); }
+
   #drilldown { display: none; }
   #drilldown.open { display: block; }
   #drilldown .card { border-color: var(--series-1); }
@@ -185,6 +194,11 @@
       </thead>
       <tbody></tbody>
     </table>
+    <div class="pagination" id="product-pagination">
+      <button id="product-prev">← Prev</button>
+      <span id="product-page-info"></span>
+      <button id="product-next">Next →</button>
+    </div>
   </div>
 
   <div class="card" id="drilldown">
@@ -346,14 +360,28 @@ function renderTable() {
   });
 }
 
+const PRODUCT_PAGE_SIZE = 10;
+let productSorted = [];
+let productPage = 0; // 0-indexed
+
 function renderProductBreakdownTable() {
-  const tbody = document.querySelector('#product-breakdown-table tbody');
-  tbody.innerHTML = '';
-  const sorted = [...windowTransitions].sort((a, b) => {
+  productSorted = [...windowTransitions].sort((a, b) => {
     const pa = a.product || '￿', pb = b.product || '￿'; // unset products sort last
     return pa.localeCompare(pb) || a.summary.localeCompare(b.summary);
   });
-  sorted.forEach(t => {
+  productPage = 0;
+  renderProductPage();
+}
+
+function renderProductPage() {
+  const tbody = document.querySelector('#product-breakdown-table tbody');
+  tbody.innerHTML = '';
+  const totalPages = Math.max(1, Math.ceil(productSorted.length / PRODUCT_PAGE_SIZE));
+  productPage = Math.min(productPage, totalPages - 1);
+  const start = productPage * PRODUCT_PAGE_SIZE;
+  const pageRows = productSorted.slice(start, start + PRODUCT_PAGE_SIZE);
+
+  pageRows.forEach(t => {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td class="left">${t.product || '–'}</td>
       <td class="left">${t.reporter || '–'}</td>
@@ -362,7 +390,15 @@ function renderProductBreakdownTable() {
       <td class="left">${t.tdi_category || '–'}</td>`;
     tbody.appendChild(tr);
   });
+
+  document.getElementById('product-page-info').textContent =
+    `Page ${productPage + 1} of ${totalPages} (${productSorted.length} total)`;
+  document.getElementById('product-prev').disabled = productPage === 0;
+  document.getElementById('product-next').disabled = productPage >= totalPages - 1;
 }
+
+document.getElementById('product-prev').addEventListener('click', () => { productPage--; renderProductPage(); });
+document.getElementById('product-next').addEventListener('click', () => { productPage++; renderProductPage(); });
 
 function buildChart(containerId, values, opts) {
   const container = document.getElementById(containerId);
