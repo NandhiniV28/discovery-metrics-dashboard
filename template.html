@@ -176,6 +176,17 @@
     </div>
   </div>
 
+  <div class="card">
+    <h2>Discoveries Completed by Talkdesk Product</h2>
+    <div class="card-sub">Last 6 3S cycles · sorted by Talkdesk Product</div>
+    <table id="product-breakdown-table">
+      <thead>
+        <tr><th class="left">Talkdesk Product</th><th class="left">Reporter</th><th class="left">Assignee</th><th class="left">Summary</th><th class="left">TDI Category</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
   <div class="card" id="drilldown">
     <button id="drilldown-close">✕ Close</button>
     <h2 id="drilldown-title">Details</h2>
@@ -187,7 +198,7 @@
   </div>
 
   <div class="note" style="margin-top: -4px;">
-    Methodology: TDIs = Jira project <strong>TDI</strong>, issue type Feature, Zone = Communications Services, <strong>with an assignee and a target quarter (Fix Version) both set</strong> — this matches the GitHub release dashboard's count exactly (52 vs. this dashboard's earlier unfiltered 67) and is applied consistently across every metric here. Discovery allocation = sum of "Allocation in Days" on child Epics (any project) whose title contains "discovery" and whose parent is the TDI, <strong>excluding epics from the Design team's project (DES)</strong>. A TDI that transitioned "In Discovery → Ready to Plan" without ever having a linked discovery epic is <strong>not</strong> counted in the trend chart, allocation chart, or 3S breakdown table below — only TDIs with at least one discovery epic represent tracked discovery work. The first three tiles bucket the current 3S cycle's discovery work by total allocation (1–5 / 6–10 / &gt;10 days) — <strong>both TDIs that already completed discovery this cycle and ones still ongoing/not yet started</strong> (for visibility into estimates vs. actual pace, not just finished work); all of a TDI's discovery epics are grouped into one entry and summed, so a TDI counts once even with multiple epics, and TDIs with no allocation set aren't counted in any bucket. The fourth tile, <strong>Discovery Epics In Progress</strong>, is the same "still open" set on its own: TDIs whose discovery epic(s) have a Jira Sprint overlapping the current 3S window and aren't Done/Closed yet, regardless of whether the TDI has already moved to Ready to Plan. "Refresh from Jira" requires running the local server (<code>python3 server.py</code>) in this folder — opened as a plain file, the button will tell you so instead of silently failing.
+    Methodology: TDIs = Jira project <strong>TDI</strong>, issue type Feature, Zone = Communications Services, <strong>with an assignee and a target quarter (Fix Version) both set</strong> — this matches the GitHub release dashboard's count exactly (52 vs. this dashboard's earlier unfiltered 67) and is applied consistently across every metric here. Discovery allocation = sum of "Allocation in Days" on child Epics (any project) whose title contains "discovery" and whose parent is the TDI, <strong>excluding epics from the Design team's project (DES)</strong>. The trend chart, allocation chart, and 3S breakdown table below count <strong>every</strong> TDI that moved Backlog or In Discovery → Ready to Plan, whether or not it has a linked discovery epic — a TDI with no discovery epic simply shows 0 allocation rather than being excluded. The first three tiles bucket the current 3S cycle's discovery work by total allocation (1–5 / 6–10 / &gt;10 days) — <strong>both TDIs that already completed discovery this cycle and ones still ongoing/not yet started</strong> (for visibility into estimates vs. actual pace, not just finished work); all of a TDI's discovery epics are grouped into one entry and summed, so a TDI counts once even with multiple epics, and TDIs with no allocation set aren't counted in any bucket. The fourth tile, <strong>Discovery Epics In Progress</strong>, is the same "still open" set on its own: TDIs whose discovery epic(s) have a Jira Sprint overlapping the current 3S window and aren't Done/Closed yet, regardless of whether the TDI has already moved to Ready to Plan. "Refresh from Jira" requires running the local server (<code>python3 server.py</code>) in this folder — opened as a plain file, the button will tell you so instead of silently failing.
   </div>
 
 </div>
@@ -257,11 +268,12 @@ function recomputeAndRender() {
   windowTransitions = allTransitions.filter(t => t.in_window);
 
   // cycle aggregation (drives both the top KPI tiles and the charts/table below).
-  // Only TDIs with at least one linked discovery epic count as a "discovery" -
-  // a TDI that transitioned without ever having a discovery epic (e.g. informal/
-  // undocumented discovery) isn't counted here.
+  // Counts every TDI that moved Backlog/In Discovery -> Ready to Plan, whether
+  // or not it has a linked discovery epic. TDIs without one simply show 0
+  // allocation (alloc_days defaults to 0 server-side) rather than being
+  // excluded from the count.
   cycleAgg = RAW.cycles.map(c => {
-    const inCycle = windowTransitions.filter(t => t.cycle_label === c.label && (t.discovery_epics || []).length > 0);
+    const inCycle = windowTransitions.filter(t => t.cycle_label === c.label);
     const d = inCycle.map(t => t.duration_days).filter(x => x != null);
     return {
       ...c,
@@ -305,6 +317,7 @@ function recomputeAndRender() {
   document.getElementById('kpi-ongoing-sub').textContent = `3S ${currentCycle.label} (${fmtDate(currentCycle.start)} – ${fmtDate(currentCycle.end)})`;
 
   renderTable();
+  renderProductBreakdownTable();
   buildChart('chart-count', cycleAgg.map(c => c.count), {
     step: 5, color: 'var(--series-1)', line: true, lineColor: 'var(--series-1)',
     tooltip: c => `${c.count} TDI${c.count === 1 ? '' : 's'} → Ready to Plan`,
@@ -329,6 +342,24 @@ function renderTable() {
       <td>${fmt(c.alloc_sum)}</td>
       <td>${c.avg_duration != null ? fmt(c.avg_duration) : '–'}</td>`;
     tr.addEventListener('click', () => drilldownFromTransitions(c._issues, `3S ${c.label}`));
+    tbody.appendChild(tr);
+  });
+}
+
+function renderProductBreakdownTable() {
+  const tbody = document.querySelector('#product-breakdown-table tbody');
+  tbody.innerHTML = '';
+  const sorted = [...windowTransitions].sort((a, b) => {
+    const pa = a.product || '￿', pb = b.product || '￿'; // unset products sort last
+    return pa.localeCompare(pb) || a.summary.localeCompare(b.summary);
+  });
+  sorted.forEach(t => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="left">${t.product || '–'}</td>
+      <td class="left">${t.reporter || '–'}</td>
+      <td class="left">${t.assignee || '–'}</td>
+      <td class="left">${tdiLink(t)} ${t.summary}</td>
+      <td class="left">${t.tdi_category || '–'}</td>`;
     tbody.appendChild(tr);
   });
 }

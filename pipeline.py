@@ -34,7 +34,7 @@ CYCLE_LEN = timedelta(days=39)
 WINDOW_CYCLES = 6
 
 FIELDS_COMMON = (
-    "summary,status,fixVersions,assignee,parent,"
+    "summary,status,fixVersions,assignee,reporter,parent,"
     "customfield_15092,"  # Talkdesk Product
     "customfield_13360,"  # TDI Category
     "customfield_15470,"  # R&D Product Area
@@ -125,6 +125,7 @@ def _issue_record(i):
         "status": f["status"]["name"],
         "fix_versions": [fv["name"] for fv in (f.get("fixVersions") or [])],
         "assignee": (f.get("assignee") or {}).get("displayName"),
+        "reporter": (f.get("reporter") or {}).get("displayName"),
         "product": _extract_field(f, "customfield_15092"),
         "tdi_category": _extract_field(f, "customfield_13360"),
         "rd_product_area": _extract_field(f, "customfield_15470"),
@@ -208,7 +209,7 @@ def run(zone=ZONE, window_cycles=WINDOW_CYCLES, progress=None):
                             events.append((h["created"], it.get("fromString"), it.get("toString")))
                 issue_status_events[k] = events
 
-    log("Computing In Discovery -> Ready to Plan transitions...")
+    log("Computing Backlog/In Discovery -> Ready to Plan transitions...")
     transitions = []
     for key, events in issue_status_events.items():
         events_sorted = sorted(events, key=lambda e: _parse_dt(e[0]))
@@ -217,7 +218,11 @@ def run(zone=ZONE, window_cycles=WINDOW_CYCLES, progress=None):
             dt = _parse_dt(created)
             if to == "In Discovery":
                 last_entry = dt
-            if frm == "In Discovery" and to == "Ready to Plan":
+            # Count both the normal In Discovery -> Ready to Plan path and a
+            # TDI that skipped discovery entirely (Backlog -> Ready to Plan
+            # directly). The latter has no discovery entry, so duration_days
+            # stays None for it - there's nothing to measure.
+            if to == "Ready to Plan" and frm in ("In Discovery", "Backlog"):
                 duration = (dt - last_entry).total_seconds() / 86400 if last_entry else None
                 transitions.append({
                     "id": f"{key}|{dt.isoformat()}",
