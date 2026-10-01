@@ -401,7 +401,7 @@ if (isGithubPages) {
   const btn = document.getElementById('refresh-btn');
   btn.textContent = '↻ Run refresh workflow →';
   btn.addEventListener('click', () => {
-    window.open('https://github.com/NandhiniV28/discovery-dashboard/actions/workflows/refresh.yml', '_blank');
+    window.open('https://github.com/NandhiniV28/discovery-metrics-dashboard/actions/workflows/refresh.yml', '_blank');
   });
   document.getElementById('refresh-status').textContent = 'Auto-refreshes weekday mornings via GitHub Actions. Click to trigger manually (needs repo access).';
 } else {
