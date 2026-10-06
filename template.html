@@ -186,8 +186,8 @@
   </div>
 
   <div class="card">
-    <h2>Discoveries Completed by Talkdesk Product</h2>
-    <div class="card-sub">Last 6 3S cycles · sorted by Talkdesk Product</div>
+    <h2>TDIs Currently In Discovery by Talkdesk Product</h2>
+    <div class="card-sub">Live snapshot · sorted by Talkdesk Product</div>
     <table id="product-breakdown-table">
       <thead>
         <tr><th class="left">Talkdesk Product</th><th class="left">Reporter</th><th class="left">Assignee</th><th class="left">Summary</th><th class="left">TDI Category</th></tr>
@@ -365,7 +365,7 @@ let productSorted = [];
 let productPage = 0; // 0-indexed
 
 function renderProductBreakdownTable() {
-  productSorted = [...windowTransitions].sort((a, b) => {
+  productSorted = [...RAW.current_in_discovery].sort((a, b) => {
     const pa = a.product || '￿', pb = b.product || '￿'; // unset products sort last
     return pa.localeCompare(pb) || a.summary.localeCompare(b.summary);
   });
