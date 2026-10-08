@@ -210,7 +210,7 @@
     <div class="card-sub">Live snapshot · grouped by Talkdesk Product · click a group to collapse/expand</div>
     <table id="product-breakdown-table">
       <thead>
-        <tr><th>#</th><th class="left">Summary</th><th class="left">Reporter</th><th class="left">Assignee</th><th class="left">TDI Category</th><th class="left">Tech Owner</th><th class="left">Design Owner</th><th class="left">Milestone</th></tr>
+        <tr><th>#</th><th class="left">Summary</th><th class="left">TDI Category</th><th class="left">Assignee</th><th class="left">Reporter</th><th class="left">Tech Owner</th><th class="left">Design Owner</th><th class="left">Milestone</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -456,9 +456,9 @@ function renderGroupedTable() {
         }
         tr.innerHTML = `<td>${rank}</td>
           <td class="left">${tdiLink(t)} ${t.summary}</td>
-          <td class="left">${t.reporter || '–'}</td>
-          <td class="left">${t.assignee || '–'}</td>
           <td class="left">${t.tdi_category || '–'}</td>
+          <td class="left">${t.assignee || '–'}</td>
+          <td class="left">${t.reporter || '–'}</td>
           <td class="left">${t.tech_owner || '–'}</td>
           <td class="left">${t.design_owner || '–'}</td>
           <td class="left">${t.milestone_date ? fmtDateOnly(t.milestone_date) : '–'}</td>`;
