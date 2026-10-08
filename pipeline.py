@@ -39,7 +39,10 @@ FIELDS_COMMON = (
     "customfield_13360,"  # TDI Category
     "customfield_15470,"  # R&D Product Area
     "customfield_15467,"  # Allocation in Days
-    "customfield_10007"   # Sprint
+    "customfield_10007,"  # Sprint
+    "customfield_19499,"  # Tech Owner
+    "customfield_19500,"  # Design Owner
+    "customfield_19501"   # Next Milestone Date
 )
 
 
@@ -130,6 +133,9 @@ def _issue_record(i):
         "tdi_category": _extract_field(f, "customfield_13360"),
         "rd_product_area": _extract_field(f, "customfield_15470"),
         "sprint": _format_sprints(f.get("customfield_10007")),
+        "tech_owner": (f.get("customfield_19499") or {}).get("displayName"),
+        "design_owner": (f.get("customfield_19500") or {}).get("displayName"),
+        "milestone_date": f.get("customfield_19501"),
         "url": f"{JIRA_BASE}/browse/{i['key']}",
     }
 
