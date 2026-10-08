@@ -20,6 +20,22 @@ from datetime import datetime, timedelta, timezone
 JIRA_BASE = "https://talkdesk.atlassian.net"
 DEFAULT_EMAIL = "nandhini.venkatesan@talkdesk.com"
 ZONE = "Communications Services"
+DIR = os.path.dirname(os.path.abspath(__file__))
+ORDER_FILE = os.path.join(DIR, "order.json")
+
+
+def load_custom_order():
+    """Manually-set per-product TDI ordering, saved by the drag-and-drop UI
+    (via server.py's /api/save-order) into order.json and committed to the
+    repo so it's shared across everyone viewing the dashboard. Shape:
+    {"<product>": ["TDI-123", "TDI-456", ...]} - rest fall back to default sort."""
+    if not os.path.exists(ORDER_FILE):
+        return {}
+    try:
+        with open(ORDER_FILE) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
 
 # Official 3S calendar anchor: cycle "260102" ends 2026-01-02. Jira changelog
 # timestamps carry a local (-06:00/-07:00) offset, not UTC - anchoring at UTC
@@ -343,6 +359,7 @@ def run(zone=ZONE, window_cycles=WINDOW_CYCLES, progress=None):
         "current_in_discovery": current_in_discovery,
         "transitions": transitions,
         "cycles": cycles,
+        "custom_order": load_custom_order(),
         "ongoing_discovery": {
             "cycle_label": current_label,
             "cycle_start": current_start.isoformat(),

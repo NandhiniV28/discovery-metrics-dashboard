@@ -103,6 +103,11 @@
   .pagination button:disabled { opacity: 0.4; cursor: default; }
   .pagination span { font-size: 12px; color: var(--text-secondary); }
 
+  tr.draggable-row { cursor: grab; }
+  tr.draggable-row:active { cursor: grabbing; }
+  tr.draggable-row.dragging { opacity: 0.4; }
+  tr.draggable-row:hover td:first-child { color: var(--series-1); font-weight: 600; }
+
   #drilldown { display: none; }
   #drilldown.open { display: block; }
   #drilldown .card { border-color: var(--series-1); }
@@ -190,7 +195,7 @@
     <div class="card-sub">Live snapshot · sorted by Talkdesk Product</div>
     <table id="product-breakdown-table">
       <thead>
-        <tr><th class="left">Talkdesk Product</th><th class="left">Reporter</th><th class="left">Assignee</th><th class="left">Summary</th><th class="left">TDI Category</th><th class="left">Tech Owner</th><th class="left">Design Owner</th><th class="left">Milestone</th></tr>
+        <tr><th>#</th><th class="left">Talkdesk Product</th><th class="left">Reporter</th><th class="left">Assignee</th><th class="left">Summary</th><th class="left">TDI Category</th><th class="left">Tech Owner</th><th class="left">Design Owner</th><th class="left">Milestone</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -199,6 +204,8 @@
       <span id="product-page-info"></span>
       <button id="product-next">Next →</button>
     </div>
+    <div class="note" id="product-order-note"></div>
+    <div class="note" id="product-order-status"></div>
   </div>
 
   <div class="card" id="drilldown">
@@ -368,17 +375,46 @@ function renderTable() {
 }
 
 const PRODUCT_PAGE_SIZE = 10;
+let productGroups = new Map(); // product name -> ordered array of TDI records
 let productSorted = [];
 let productPage = 0; // 0-indexed
+const canReorder = !location.hostname.endsWith('github.io'); // drag-and-drop + save only via the local server
 
 function renderProductBreakdownTable() {
-  productSorted = [...RAW.current_in_discovery].sort((a, b) => {
-    const pa = a.product || '￿', pb = b.product || '￿'; // unset products sort last
-    return pa.localeCompare(pb) || a.summary.localeCompare(b.summary);
+  const customOrder = RAW.custom_order || {};
+  const byProduct = new Map();
+  RAW.current_in_discovery.forEach(t => {
+    const p = t.product || '(no product)';
+    if (!byProduct.has(p)) byProduct.set(p, []);
+    byProduct.get(p).push(t);
   });
+
+  productGroups = new Map();
+  [...byProduct.keys()].sort((a, b) => a === '(no product)' ? 1 : b === '(no product)' ? -1 : a.localeCompare(b)).forEach(p => {
+    const items = byProduct.get(p);
+    const order = customOrder[p] || [];
+    const byKey = new Map(items.map(t => [t.key, t]));
+    const ordered = [];
+    order.forEach(k => { if (byKey.has(k)) { ordered.push(byKey.get(k)); byKey.delete(k); } });
+    // anything not in the saved order (new TDIs, or no saved order yet) goes
+    // after, in the default alphabetical-by-summary order
+    const rest = [...byKey.values()].sort((a, b) => a.summary.localeCompare(b.summary));
+    productGroups.set(p, [...ordered, ...rest]);
+  });
+
+  flattenProductGroups();
   productPage = 0;
   renderProductPage();
 }
+
+function flattenProductGroups() {
+  productSorted = [];
+  productGroups.forEach((items, product) => {
+    items.forEach((t, i) => productSorted.push({ ...t, _product: product, _rank: i + 1 }));
+  });
+}
+
+let dragState = null; // { key, product }
 
 function renderProductPage() {
   const tbody = document.querySelector('#product-breakdown-table tbody');
@@ -390,7 +426,14 @@ function renderProductPage() {
 
   pageRows.forEach(t => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td class="left">${t.product || '–'}</td>
+    if (canReorder) {
+      tr.draggable = true;
+      tr.className = 'draggable-row';
+      tr.dataset.key = t.key;
+      tr.dataset.product = t._product;
+    }
+    tr.innerHTML = `<td>${t._rank}</td>
+      <td class="left">${t.product || '–'}</td>
       <td class="left">${t.reporter || '–'}</td>
       <td class="left">${t.assignee || '–'}</td>
       <td class="left">${tdiLink(t)} ${t.summary}</td>
@@ -398,6 +441,23 @@ function renderProductPage() {
       <td class="left">${t.tech_owner || '–'}</td>
       <td class="left">${t.design_owner || '–'}</td>
       <td class="left">${t.milestone_date ? fmtDateOnly(t.milestone_date) : '–'}</td>`;
+
+    if (canReorder) {
+      tr.addEventListener('dragstart', () => {
+        dragState = { key: t.key, product: t._product };
+        tr.classList.add('dragging');
+      });
+      tr.addEventListener('dragend', () => tr.classList.remove('dragging'));
+      tr.addEventListener('dragover', (evt) => {
+        if (dragState && dragState.product === t._product) evt.preventDefault();
+      });
+      tr.addEventListener('drop', (evt) => {
+        evt.preventDefault();
+        if (!dragState || dragState.product !== t._product || dragState.key === t.key) return;
+        reorderWithinProduct(t._product, dragState.key, t.key);
+        dragState = null;
+      });
+    }
     tbody.appendChild(tr);
   });
 
@@ -405,6 +465,33 @@ function renderProductPage() {
     `Page ${productPage + 1} of ${totalPages} (${productSorted.length} total)`;
   document.getElementById('product-prev').disabled = productPage === 0;
   document.getElementById('product-next').disabled = productPage >= totalPages - 1;
+}
+
+function reorderWithinProduct(product, draggedKey, targetKey) {
+  const items = productGroups.get(product);
+  const fromIdx = items.findIndex(t => t.key === draggedKey);
+  const toIdx = items.findIndex(t => t.key === targetKey);
+  if (fromIdx === -1 || toIdx === -1) return;
+  const [moved] = items.splice(fromIdx, 1);
+  items.splice(toIdx, 0, moved);
+  flattenProductGroups();
+  renderProductPage();
+  saveProductOrder();
+}
+
+async function saveProductOrder() {
+  const status = document.getElementById('product-order-status');
+  const order = {};
+  productGroups.forEach((items, product) => { order[product] = items.map(t => t.key); });
+  status.textContent = 'Saving order…';
+  try {
+    const resp = await fetch('/api/save-order', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(order) });
+    const result = await resp.json();
+    if (!resp.ok || !result.ok) throw new Error(result.error || ('HTTP ' + resp.status));
+    status.textContent = result.pushed ? 'Order saved and pushed to the repo.' : 'Order saved (no change to push).';
+  } catch (e) {
+    status.textContent = 'Could not save order: ' + e.message;
+  }
 }
 
 document.getElementById('product-prev').addEventListener('click', () => { productPage--; renderProductPage(); });
@@ -508,6 +595,9 @@ function setGeneratedAt() {
 }
 
 // ---------- init ----------
+document.getElementById('product-order-note').textContent = canReorder
+  ? 'Drag a row to reorder it within its product (rank # updates automatically). Saves and pushes to the repo immediately, shared with everyone.'
+  : 'Rank (#) reflects the last saved manual order. Drag-to-reorder is only available when running the local server (python3 server.py) — this public page is read-only.';
 setGeneratedAt();
 recomputeAndRender();
 </script>
