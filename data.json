@@ -7120,8 +7120,8 @@
   ],
   "custom_order": {
     "Connector - MS Teams": [
-      "TDI-11321",
-      "TDI-16297"
+      "TDI-16297",
+      "TDI-11321"
     ],
     "Conversations Mobile App": [
       "TDI-16407",
