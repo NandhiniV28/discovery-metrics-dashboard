@@ -1,0 +1,80 @@
+{
+  "Connector - MS Teams": [
+    "TDI-16297",
+    "TDI-11321"
+  ],
+  "Conversations Mobile App": [
+    "TDI-16407",
+    "TDI-16386"
+  ],
+  "Conversations Voice Channel": [
+    "TDI-16887",
+    "TDI-16886",
+    "TDI-16881",
+    "TDI-16606",
+    "TDI-16630",
+    "TDI-15440",
+    "TDI-17235",
+    "TDI-15356",
+    "TDI-15860"
+  ],
+  "Emergency Services": [
+    "TDI-17327",
+    "TDI-15984",
+    "TDI-16239",
+    "TDI-17472",
+    "TDI-16237",
+    "TDI-15951",
+    "TDI-16287"
+  ],
+  "Numbers": [
+    "TDI-10984",
+    "TDI-16610",
+    "TDI-16611",
+    "TDI-15506",
+    "TDI-16930",
+    "TDI-16073",
+    "TDI-17419"
+  ],
+  "Office": [
+    "TDI-16369",
+    "TDI-16868"
+  ],
+  "Studio IVR": [
+    "TDI-15451",
+    "TDI-15449",
+    "TDI-16996",
+    "TDI-10359",
+    "TDI-16531",
+    "TDI-16183"
+  ],
+  "TD Minutes": [
+    "TDI-17191",
+    "TDI-16345",
+    "TDI-16308"
+  ],
+  "VDI Connect": [
+    "TDI-15458",
+    "TDI-17020",
+    "TDI-15456"
+  ],
+  "Voice Platform": [
+    "TDI-15839",
+    "TDI-17329",
+    "TDI-16986",
+    "TDI-15630",
+    "TDI-17386",
+    "TDI-16931",
+    "TDI-17501",
+    "TDI-17083",
+    "TDI-17254",
+    "TDI-16311",
+    "TDI-17045"
+  ],
+  "(no product)": [
+    "TDI-17333",
+    "TDI-17439",
+    "TDI-16607",
+    "TDI-17473"
+  ]
+}
