@@ -108,6 +108,20 @@
   tr.draggable-row.dragging { opacity: 0.4; }
   tr.draggable-row:hover td:first-child { color: var(--series-1); font-weight: 600; }
 
+  .github-connect-form { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-top: 4px; }
+  .github-connect-form a { color: var(--series-1); }
+  .github-connect-form code { background: var(--accent-wash); padding: 1px 5px; border-radius: 4px; }
+  .github-connect-row { display: flex; gap: 8px; margin-top: 6px; }
+  .github-connect-row input {
+    flex: 1; max-width: 320px; font-size: 12px; padding: 5px 8px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary);
+  }
+  .github-connect-row button, #github-disconnect {
+    background: var(--series-1); color: #fff; border: none; border-radius: 6px;
+    font-size: 12px; padding: 5px 12px; cursor: pointer;
+  }
+  #github-disconnect { background: none; color: var(--text-secondary); border: 1px solid var(--border); margin-top: 4px; }
+
   #drilldown { display: none; }
   #drilldown.open { display: block; }
   #drilldown .card { border-color: var(--series-1); }
@@ -205,6 +219,7 @@
       <button id="product-next">Next →</button>
     </div>
     <div class="note" id="product-order-note"></div>
+    <div id="github-connect-ui"></div>
     <div class="note" id="product-order-status"></div>
   </div>
 
@@ -375,10 +390,20 @@ function renderTable() {
 }
 
 const PRODUCT_PAGE_SIZE = 10;
+const GITHUB_REPO = 'NandhiniV28/discovery-metrics-dashboard';
+const GITHUB_PAT_KEY = 'ddash_github_pat';
 let productGroups = new Map(); // product name -> ordered array of TDI records
 let productSorted = [];
 let productPage = 0; // 0-indexed
-const canReorder = !location.hostname.endsWith('github.io'); // drag-and-drop + save only via the local server
+
+function onGithubPages() { return location.hostname.endsWith('github.io'); }
+function getGithubToken() { return localStorage.getItem(GITHUB_PAT_KEY) || ''; }
+function setGithubToken(t) { localStorage.setItem(GITHUB_PAT_KEY, t); }
+function clearGithubToken() { localStorage.removeItem(GITHUB_PAT_KEY); }
+// Local server (python3 server.py) always allows it, using this machine's own
+// git credentials. On the public Pages site, it's only enabled once the viewer
+// has pasted their own GitHub token in (stored in their browser only).
+function canReorderNow() { return !onGithubPages() || !!getGithubToken(); }
 
 function renderProductBreakdownTable() {
   const customOrder = RAW.custom_order || {};
@@ -426,7 +451,7 @@ function renderProductPage() {
 
   pageRows.forEach(t => {
     const tr = document.createElement('tr');
-    if (canReorder) {
+    if (canReorderNow()) {
       tr.draggable = true;
       tr.className = 'draggable-row';
       tr.dataset.key = t.key;
@@ -442,9 +467,15 @@ function renderProductPage() {
       <td class="left">${t.design_owner || '–'}</td>
       <td class="left">${t.milestone_date ? fmtDateOnly(t.milestone_date) : '–'}</td>`;
 
-    if (canReorder) {
-      tr.addEventListener('dragstart', () => {
+    if (canReorderNow()) {
+      tr.addEventListener('dragstart', (evt) => {
         dragState = { key: t.key, product: t._product };
+        // Some browsers (Firefox in particular) silently cancel a drag that
+        // never calls dataTransfer.setData() in dragstart - without this,
+        // dragover/drop never fire for a real mouse-driven drag even though
+        // programmatically dispatched events skip this check entirely.
+        evt.dataTransfer.setData('text/plain', t.key);
+        evt.dataTransfer.effectAllowed = 'move';
         tr.classList.add('dragging');
       });
       tr.addEventListener('dragend', () => tr.classList.remove('dragging'));
@@ -485,12 +516,100 @@ async function saveProductOrder() {
   productGroups.forEach((items, product) => { order[product] = items.map(t => t.key); });
   status.textContent = 'Saving order…';
   try {
-    const resp = await fetch('/api/save-order', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(order) });
-    const result = await resp.json();
-    if (!resp.ok || !result.ok) throw new Error(result.error || ('HTTP ' + resp.status));
-    status.textContent = result.pushed ? 'Order saved and pushed to the repo.' : 'Order saved (no change to push).';
+    if (onGithubPages()) {
+      await saveOrderViaGithubApi(order);
+      status.textContent = 'Order saved to GitHub and refresh triggered — visible to everyone within a few minutes.';
+    } else {
+      const resp = await fetch('/api/save-order', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(order) });
+      const result = await resp.json();
+      if (!resp.ok || !result.ok) throw new Error(result.error || ('HTTP ' + resp.status));
+      status.textContent = result.pushed ? 'Order saved and pushed to the repo.' : 'Order saved (no change to push).';
+    }
   } catch (e) {
     status.textContent = 'Could not save order: ' + e.message;
+  }
+}
+
+// UTF-8 safe base64 encoding (names in this data include accented characters,
+// e.g. "João", "Sérgio" - plain btoa() would throw or corrupt those).
+function utf8ToBase64(str) {
+  return btoa(unescape(encodeURIComponent(str)));
+}
+
+async function saveOrderViaGithubApi(order) {
+  const token = getGithubToken();
+  if (!token) throw new Error('Not connected to GitHub.');
+  const apiBase = `https://api.github.com/repos/${GITHUB_REPO}/contents/order.json`;
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' };
+
+  const getResp = await fetch(apiBase, { headers });
+  let sha;
+  if (getResp.ok) {
+    sha = (await getResp.json()).sha;
+  } else if (getResp.status !== 404) {
+    throw new Error(`GitHub rejected the read (HTTP ${getResp.status}) — check your token's scope/expiry.`);
+  }
+
+  const putResp = await fetch(apiBase, {
+    method: 'PUT',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: 'Update manual TDI order (via dashboard)',
+      content: utf8ToBase64(JSON.stringify(order, null, 2)),
+      sha, branch: 'main',
+    }),
+  });
+  if (!putResp.ok) {
+    const j = await putResp.json().catch(() => ({}));
+    throw new Error(j.message || `GitHub rejected the save (HTTP ${putResp.status}).`);
+  }
+
+  // Best-effort: trigger the refresh workflow so data.json/dashboard.html pick
+  // up the new order for everyone, not just this browser. Needs Actions
+  // write permission on the token; failing silently here is fine - the order
+  // is already saved, it'll just show up at the next scheduled refresh instead.
+  try {
+    await fetch(`https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/refresh.yml/dispatches`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ref: 'main' }),
+    });
+  } catch (e) { /* non-fatal */ }
+}
+
+function updateProductOrderNote() {
+  const note = document.getElementById('product-order-note');
+  const connectUi = document.getElementById('github-connect-ui');
+  if (!onGithubPages()) {
+    note.textContent = 'Drag a row to reorder it within its product (rank # updates automatically). Saves and pushes to the repo immediately, shared with everyone.';
+    connectUi.innerHTML = '';
+    return;
+  }
+  if (getGithubToken()) {
+    note.textContent = 'Drag a row to reorder it within its product. Connected to GitHub — saves will be pushed and shared with everyone within a few minutes.';
+    connectUi.innerHTML = `<button id="github-disconnect">Disconnect GitHub</button>`;
+    document.getElementById('github-disconnect').addEventListener('click', () => {
+      clearGithubToken();
+      updateProductOrderNote();
+      renderProductPage();
+    });
+  } else {
+    note.textContent = 'Rank (#) reflects the last saved manual order. Connect your own GitHub token below to drag-and-drop reorder directly from this page.';
+    connectUi.innerHTML = `
+      <div class="github-connect-form">
+        <span>Create a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank">fine-grained token</a> scoped to just the <code>${GITHUB_REPO}</code> repo, with Contents: Read and write (add Actions: Read and write too, to auto-refresh the live page after saving) — then paste it here. It's stored only in this browser's local storage; I never see it.</span>
+        <div class="github-connect-row">
+          <input type="password" id="github-token-input" placeholder="github_pat_...">
+          <button id="github-connect-btn">Connect</button>
+        </div>
+      </div>`;
+    document.getElementById('github-connect-btn').addEventListener('click', () => {
+      const val = document.getElementById('github-token-input').value.trim();
+      if (!val) return;
+      setGithubToken(val);
+      updateProductOrderNote();
+      renderProductPage();
+    });
   }
 }
 
@@ -595,9 +714,7 @@ function setGeneratedAt() {
 }
 
 // ---------- init ----------
-document.getElementById('product-order-note').textContent = canReorder
-  ? 'Drag a row to reorder it within its product (rank # updates automatically). Saves and pushes to the repo immediately, shared with everyone.'
-  : 'Rank (#) reflects the last saved manual order. Drag-to-reorder is only available when running the local server (python3 server.py) — this public page is read-only.';
+updateProductOrderNote();
 setGeneratedAt();
 recomputeAndRender();
 </script>
